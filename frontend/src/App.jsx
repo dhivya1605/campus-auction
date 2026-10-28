@@ -6,6 +6,7 @@ import ListingDetails from './pages/ListingDetails';
 import CreateListing from './pages/CreateListing';
 import EditListing from './pages/EditListing';
 import MyListings from './pages/MyListings';
+import MyPurchases from './pages/MyPurchases';
 import Login from './pages/Login';
 import Register from './pages/Register';
 import NotFound from './pages/NotFound';
@@ -34,6 +35,14 @@ export const App = () => {
             element={
               <ProtectedRoute>
                 <MyListings />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/my-purchases"
+            element={
+              <ProtectedRoute>
+                <MyPurchases />
               </ProtectedRoute>
             }
           />

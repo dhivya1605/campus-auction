@@ -37,6 +37,11 @@ export const Navbar = () => {
                     My Listings & Sales
                   </NavLink>
                 </li>
+                <li>
+                  <NavLink to="/my-purchases" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+                    My Purchases
+                  </NavLink>
+                </li>
               </>
             )}
           </ul>

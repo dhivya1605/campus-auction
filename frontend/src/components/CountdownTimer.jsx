@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 
 export const CountdownTimer = ({ closingTime, onEnd }) => {
-  const [timeLeft, setTimeLeft] = useState(() => calculateTimeLeft(closingTime));
-
-  function calculateTimeLeft(target) {
+  const calculateTimeLeft = (target) => {
+    if (!target) {
+      return { total: 0, days: 0, hours: 0, minutes: 0, seconds: 0, ended: true };
+    }
     const difference = new Date(target).getTime() - new Date().getTime();
-    if (difference <= 0) {
+    if (isNaN(difference) || difference <= 0) {
       return { total: 0, days: 0, hours: 0, minutes: 0, seconds: 0, ended: true };
     }
 
@@ -17,20 +18,49 @@ export const CountdownTimer = ({ closingTime, onEnd }) => {
       seconds: Math.floor((difference / 1000) % 60),
       ended: false
     };
-  }
+  };
+
+  const [timeLeft, setTimeLeft] = useState(() => calculateTimeLeft(closingTime));
+  
+  // Guard against calling onEnd multiple times or when already ended on mount
+  const hasNotifiedRef = useRef(calculateTimeLeft(closingTime).ended);
+  const onEndRef = useRef(onEnd);
 
   useEffect(() => {
+    onEndRef.current = onEnd;
+  }, [onEnd]);
+
+  useEffect(() => {
+    const initialRemaining = calculateTimeLeft(closingTime);
+    setTimeLeft(initialRemaining);
+
+    // If auction has already ended when mounted or when closingTime is in the past,
+    // do not schedule an interval and do not trigger onEnd again.
+    if (initialRemaining.ended) {
+      hasNotifiedRef.current = true;
+      return;
+    }
+
+    // Reset notification flag when a new future closingTime is provided (e.g. anti-sniping extension)
+    hasNotifiedRef.current = false;
+
     const timer = setInterval(() => {
       const remaining = calculateTimeLeft(closingTime);
       setTimeLeft(remaining);
+
       if (remaining.ended) {
         clearInterval(timer);
-        if (onEnd) onEnd();
+        if (!hasNotifiedRef.current) {
+          hasNotifiedRef.current = true;
+          if (onEndRef.current) {
+            onEndRef.current();
+          }
+        }
       }
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [closingTime, onEnd]);
+  }, [closingTime]);
 
   if (timeLeft.ended) {
     return <span className="countdown-pill countdown-ended">Ended</span>;

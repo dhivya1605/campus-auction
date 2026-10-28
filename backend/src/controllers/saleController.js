@@ -1,6 +1,7 @@
 import { SaleOutcome } from '../models/SaleOutcome.js';
 import { Listing } from '../models/Listing.js';
 import { ApiError } from '../utils/ApiError.js';
+import mongoose from 'mongoose';
 
 /**
  * Retrieves the sale outcome record for a given listing.
@@ -21,6 +22,41 @@ export const getSaleOutcome = async (req, res, next) => {
     res.status(200).json({
       success: true,
       outcome
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+/**
+ * Returns all sale outcomes where the authenticated user is the provisional winner (buyer).
+ * Used by the buyer's "My Purchases" page.
+ * Only returns outcomes with valid bids (provisionalWinner is set).
+ */
+export const getMyPurchases = async (req, res, next) => {
+  try {
+    const buyerId = req.user._id;
+
+    const outcomes = await SaleOutcome.find({
+      provisionalWinner: buyerId,
+      // Exclude unsold/no-winner states
+      outcome: { $nin: ['unsold', 'seller_cancelled'] }
+    })
+      .populate({
+        path: 'listing',
+        select: 'title photos category condition currentPrice startingPrice closingTime status'
+      })
+      .populate('seller', 'name')
+      .populate('winningBid', 'amount createdAt')
+      .sort({ updatedAt: -1 })
+      .lean();
+
+    // Filter out outcomes where listing populate failed (deleted listings)
+    const validOutcomes = outcomes.filter((o) => o.listing != null);
+
+    res.status(200).json({
+      success: true,
+      purchases: validOutcomes
     });
   } catch (error) {
     next(error);
@@ -326,4 +362,3 @@ export const cancelSale = async (req, res, next) => {
     next(error);
   }
 };
-

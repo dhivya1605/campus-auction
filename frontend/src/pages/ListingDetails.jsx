@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { listingApi } from '../api/listingApi';
 import { bidApi } from '../api/bidApi';
@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import CountdownTimer from '../components/CountdownTimer';
 import BidHistory from '../components/BidHistory';
 import Loading from '../components/Loading';
+import ErrorMessage from '../components/ErrorMessage';
 import { getImageUrl, PLACEHOLDER_IMAGE } from '../utils/imageUrl';
 
 export const ListingDetails = () => {
@@ -15,7 +16,11 @@ export const ListingDetails = () => {
 
   const [listing, setListing] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState(null);
+
+  // Guard against overlapping concurrent requests
+  const inFlightRef = useRef(false);
 
   // Bidding form states
   const [bidAmount, setBidAmount] = useState('');
@@ -26,12 +31,21 @@ export const ListingDetails = () => {
   // Active photo
   const [selectedPhoto, setSelectedPhoto] = useState(0);
 
-  const fetchListing = useCallback(async () => {
+  const fetchListing = useCallback(async (isInitial = false) => {
+    if (inFlightRef.current) return;
+
     try {
-      setLoading(true);
+      inFlightRef.current = true;
+      if (isInitial) {
+        setLoading(true);
+      } else {
+        setRefreshing(true);
+      }
       setError(null);
+
       const data = await listingApi.getListingById(id);
       setListing(data.listing);
+
       // Pre-fill suggested next bid amount
       if (data.listing) {
         const nextMin = !data.listing.leadingBid
@@ -43,12 +57,34 @@ export const ListingDetails = () => {
       setError(err.message || 'Failed to load listing details');
     } finally {
       setLoading(false);
+      setRefreshing(false);
+      inFlightRef.current = false;
     }
   }, [id]);
 
+  // Initial fetch when listing ID changes
   useEffect(() => {
-    fetchListing();
+    fetchListing(true);
   }, [fetchListing]);
+
+  const handleAuctionEnd = useCallback(() => {
+    // Smooth background update when the countdown reaches zero
+    fetchListing(false);
+  }, [fetchListing]);
+
+  // Background live update for active auctions (every 20s, keeping existing view intact).
+  // Must be here — before any early returns — to satisfy React's Rules of Hooks.
+  useEffect(() => {
+    // Guard inside the effect: only run the interval when we actually have a live auction.
+    const isOpen = listing && listing.isBiddingActive && new Date(listing.closingTime).getTime() > Date.now();
+    if (!isOpen) return;
+
+    const interval = setInterval(() => {
+      fetchListing(false);
+    }, 20000);
+
+    return () => clearInterval(interval);
+  }, [listing, fetchListing]);
 
   const handleBidSubmit = async (e) => {
     e.preventDefault();
@@ -68,8 +104,8 @@ export const ListingDetails = () => {
         ? `Bid of ₹${amountNum} placed! ⏱️ Anti-sniping protection triggered: closing time extended by 60 seconds!`
         : `Bid of ₹${amountNum} placed successfully!`;
       setBidSuccess(successMsg);
-      // Refresh listing data & bids from backend
-      await fetchListing();
+      // Smoothly update listing data and bids without resetting page loading state
+      await fetchListing(false);
     } catch (err) {
       setBidError(err.message || 'Failed to place bid');
     } finally {
@@ -82,7 +118,7 @@ export const ListingDetails = () => {
       setBidSubmitting(true);
       await saleApi.closeAuction(id);
       setBidSuccess('Auction closed successfully.');
-      await fetchListing();
+      await fetchListing(false);
     } catch (err) {
       setBidError(err.message || 'Failed to close auction');
     } finally {
@@ -97,7 +133,7 @@ export const ListingDetails = () => {
   if (error || !listing) {
     return (
       <div className="container">
-        <ErrorMessage message={error || 'Listing not found'} onRetry={fetchListing} />
+        <ErrorMessage message={error || 'Listing not found'} onRetry={() => fetchListing(true)} />
         <Link to="/" className="btn btn-secondary" style={{ marginTop: '1rem' }}>
           ← Back to Marketplace
         </Link>
@@ -262,7 +298,19 @@ export const ListingDetails = () => {
           </div>
 
           <div style={{ marginTop: '2rem' }}>
-            <h2 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '0.75rem' }}>Public Bid History</h2>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.75rem' }}>
+              <h2 style={{ fontSize: '1.25rem', fontWeight: 600, margin: 0 }}>Public Bid History</h2>
+              <button
+                type="button"
+                onClick={() => fetchListing(false)}
+                disabled={refreshing}
+                className="btn btn-secondary"
+                style={{ padding: '0.25rem 0.6rem', fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}
+                title="Refresh latest bids"
+              >
+                <span>{refreshing ? 'Refreshing...' : '🔄 Refresh Bids'}</span>
+              </button>
+            </div>
             <BidHistory bids={listing.bids || []} />
           </div>
 
@@ -355,7 +403,7 @@ export const ListingDetails = () => {
               </div>
               <div style={{ textAlign: 'right' }}>
                 <div className="price-label">Time Remaining</div>
-                <CountdownTimer closingTime={listing.closingTime} onEnd={fetchListing} />
+                <CountdownTimer closingTime={listing.closingTime} onEnd={handleAuctionEnd} />
               </div>
             </div>
 
