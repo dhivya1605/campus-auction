@@ -5,6 +5,7 @@ import authRoutes from './routes/authRoutes.js';
 import listingRoutes from './routes/listingRoutes.js';
 import auctionRoutes from './routes/auctionRoutes.js';
 import saleRoutes from './routes/saleRoutes.js';
+import notificationRoutes from './routes/notificationRoutes.js';
 import { notFoundMiddleware } from './middleware/notFoundMiddleware.js';
 import { errorMiddleware } from './middleware/errorMiddleware.js';
 import { UPLOADS_DIR } from './middleware/uploadMiddleware.js';
@@ -48,6 +49,7 @@ export const createApp = () => {
   app.use('/api/listings', listingRoutes);
   app.use('/api/auctions', auctionRoutes);
   app.use('/api/sales', saleRoutes);
+  app.use('/api/notifications', notificationRoutes);
 
   // Catch-all 404 handler
   app.use(notFoundMiddleware);

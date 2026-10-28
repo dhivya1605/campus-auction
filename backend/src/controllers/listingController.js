@@ -3,6 +3,7 @@ import { Bid } from '../models/Bid.js';
 import { SaleOutcome } from '../models/SaleOutcome.js';
 import { ApiError } from '../utils/ApiError.js';
 import { cleanupFile, cleanupFiles } from '../middleware/uploadMiddleware.js';
+import { notifyListingCancelled } from '../services/notificationService.js';
 
 /**
  * Creates a new listing for an authenticated seller.
@@ -511,6 +512,22 @@ export const cancelListing = async (req, res, next) => {
       },
       { upsert: true, new: true }
     );
+
+    // Notify all distinct bidders if there were bids on this listing
+    if (hasBids) {
+      Bid.find({ listing: listingId })
+        .distinct('bidder')
+        .then((bidderIds) => {
+          if (bidderIds && bidderIds.length > 0) {
+            notifyListingCancelled({
+              bidderIds,
+              listingId,
+              listingTitle: listing.title
+            });
+          }
+        })
+        .catch((e) => console.error('[ListingController] notifyListingCancelled error:', e.message));
+    }
 
     res.status(200).json({
       success: true,

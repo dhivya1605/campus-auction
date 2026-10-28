@@ -1,7 +1,18 @@
+
 import { SaleOutcome } from '../models/SaleOutcome.js';
 import { Listing } from '../models/Listing.js';
+import { Bid } from '../models/Bid.js';
 import { ApiError } from '../utils/ApiError.js';
 import mongoose from 'mongoose';
+import {
+  notifyBidApproved,
+  notifyBidRejected,
+  notifyHandoverConfirmedBySeller,
+  notifyHandoverConfirmedByBuyer,
+  notifyHandoverCompleted,
+  notifyFailedPickup,
+  notifySaleCancelled
+} from '../services/notificationService.js';
 
 /**
  * Retrieves the sale outcome record for a given listing.
@@ -108,6 +119,18 @@ export const approveWinningBid = async (req, res, next) => {
     // Update listing status
     await Listing.findByIdAndUpdate(listingId, { status: 'reserved' });
 
+    // Notify the provisional winner that seller approved
+    if (outcome.provisionalWinner) {
+      notifyBidApproved({
+        recipientId: outcome.provisionalWinner,
+        listingId,
+        listingTitle: (await Listing.findById(listingId).select('title').lean())?.title || 'item',
+        amount: outcome.winningBid
+          ? (await Bid.findById(outcome.winningBid).select('amount').lean())?.amount
+          : undefined
+      }).catch((e) => console.error('[SaleController] notifyBidApproved error:', e.message));
+    }
+
     res.status(200).json({
       success: true,
       message: 'Winning bid approved. Item is now reserved for pickup/handover.',
@@ -162,6 +185,15 @@ export const rejectWinningBid = async (req, res, next) => {
 
     // Update listing status
     await Listing.findByIdAndUpdate(listingId, { status: 'rejected' });
+
+    // Notify the provisional winner that seller rejected
+    if (outcome.provisionalWinner) {
+      notifyBidRejected({
+        recipientId: outcome.provisionalWinner,
+        listingId,
+        listingTitle: (await Listing.findById(listingId).select('title').lean())?.title || 'item'
+      }).catch((e) => console.error('[SaleController] notifyBidRejected error:', e.message));
+    }
 
     res.status(200).json({
       success: true,
@@ -247,6 +279,38 @@ export const confirmHandover = async (req, res, next) => {
 
     await outcome.save();
 
+    // Notifications after save
+    try {
+      const listingTitle = (await Listing.findById(listingId).select('title').lean())?.title || 'item';
+      if (bothConfirmed) {
+        await notifyHandoverCompleted({
+          sellerId: outcome.seller,
+          buyerId: outcome.provisionalWinner,
+          listingId,
+          listingTitle
+        });
+      } else if (isSeller) {
+        // Seller confirmed — notify buyer
+        if (outcome.provisionalWinner) {
+          await notifyHandoverConfirmedBySeller({
+            recipientId: outcome.provisionalWinner,
+            listingId,
+            listingTitle,
+            location: outcome.handoverConfirmation.handoverLocation
+          });
+        }
+      } else if (isBuyer) {
+        // Buyer confirmed — notify seller
+        await notifyHandoverConfirmedByBuyer({
+          recipientId: outcome.seller,
+          listingId,
+          listingTitle
+        });
+      }
+    } catch (notifErr) {
+      console.error('[SaleController] confirmHandover notification error:', notifErr.message);
+    }
+
     res.status(200).json({
       success: true,
       message: bothConfirmed
@@ -304,6 +368,15 @@ export const recordFailedPickup = async (req, res, next) => {
     await outcome.save();
     await Listing.findByIdAndUpdate(listingId, { status: 'failed_pickup' });
 
+    // Notify both parties of failed pickup
+    notifyFailedPickup({
+      sellerId: outcome.seller,
+      buyerId: outcome.provisionalWinner,
+      listingId,
+      listingTitle: (await Listing.findById(listingId).select('title').lean())?.title || 'item',
+      reason: outcome.failureOrCancellationReason
+    }).catch((e) => console.error('[SaleController] notifyFailedPickup error:', e.message));
+
     res.status(200).json({
       success: true,
       message: 'Failed pickup recorded. Sale closed as failed_pickup.',
@@ -352,6 +425,14 @@ export const cancelSale = async (req, res, next) => {
 
     await outcome.save();
     await Listing.findByIdAndUpdate(listingId, { status: 'cancelled' });
+
+    // Notify buyer of cancellation
+    notifySaleCancelled({
+      buyerId: outcome.provisionalWinner,
+      listingId,
+      listingTitle: (await Listing.findById(listingId).select('title').lean())?.title || 'item',
+      reason: outcome.failureOrCancellationReason
+    }).catch((e) => console.error('[SaleController] notifySaleCancelled error:', e.message));
 
     res.status(200).json({
       success: true,

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import { saleApi } from '../api/saleApi';
 import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
 import { getImageUrl, PLACEHOLDER_IMAGE } from '../utils/imageUrl';
 import Loading from '../components/Loading';
 import ErrorMessage from '../components/ErrorMessage';
@@ -265,6 +266,7 @@ const PurchaseCard = ({ purchase, onAccept, processingId }) => {
 
 export const MyPurchases = () => {
   const { user } = useAuth();
+  const { fetchNotifications } = useNotifications();
   const [purchases, setPurchases] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -311,6 +313,7 @@ export const MyPurchases = () => {
           : '✓ You have accepted the purchase. Waiting for seller confirmation to finalize.'
       );
       await fetchPurchases(false);
+      fetchNotifications();
     } catch (err) {
       setActionError(err.message || 'Failed to accept purchase. Please try again.');
     } finally {

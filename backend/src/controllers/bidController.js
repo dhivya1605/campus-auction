@@ -2,6 +2,7 @@ import mongoose from 'mongoose';
 import { Listing } from '../models/Listing.js';
 import { Bid } from '../models/Bid.js';
 import { ApiError } from '../utils/ApiError.js';
+import { notifyBidPlaced, notifyOutbid, notifySellerNewBid } from '../services/notificationService.js';
 
 /**
  * Places a bid on an active listing with robust concurrency handling.
@@ -130,6 +131,36 @@ export const placeBid = async (req, res, next) => {
 
         const populatedBid = await Bid.findById(bid._id).populate('bidder', 'name');
 
+        // Create notifications safely before sending response
+        try {
+          const prevLeadBid = listing.leadingBid
+            ? await Bid.findById(listing.leadingBid).select('bidder').lean()
+            : null;
+          await notifyBidPlaced({
+            recipientId: bidderId,
+            listingId: listing._id,
+            listingTitle: listing.title,
+            amount
+          });
+          await notifySellerNewBid({
+            sellerId: listing.seller,
+            listingId: listing._id,
+            listingTitle: listing.title,
+            amount
+          });
+          if (prevLeadBid && prevLeadBid.bidder.toString() !== bidderId.toString()) {
+            await notifyOutbid({
+              recipientId: prevLeadBid.bidder,
+              listingId: listing._id,
+              listingTitle: listing.title,
+              newAmount: amount,
+              previousBidId: prevLeadBid._id
+            });
+          }
+        } catch (notifErr) {
+          console.error('[BidController] Notification error:', notifErr.message);
+        }
+
         return res.status(201).json({
           success: true,
           message: wasExtended
@@ -229,6 +260,36 @@ export const placeBid = async (req, res, next) => {
     }
 
     const populatedBid = await Bid.findById(createdBid._id).populate('bidder', 'name');
+
+    // Create notifications safely before sending response
+    try {
+      const prevLeadBid = listing.leadingBid
+        ? await Bid.findById(listing.leadingBid).select('bidder').lean()
+        : null;
+      await notifyBidPlaced({
+        recipientId: bidderId,
+        listingId: listing._id,
+        listingTitle: listing.title,
+        amount
+      });
+      await notifySellerNewBid({
+        sellerId: listing.seller,
+        listingId: listing._id,
+        listingTitle: listing.title,
+        amount
+      });
+      if (prevLeadBid && prevLeadBid.bidder.toString() !== bidderId.toString()) {
+        await notifyOutbid({
+          recipientId: prevLeadBid.bidder,
+          listingId: listing._id,
+          listingTitle: listing.title,
+          newAmount: amount,
+          previousBidId: prevLeadBid._id
+        });
+      }
+    } catch (notifErr) {
+      console.error('[BidController] Notification error:', notifErr.message);
+    }
 
     return res.status(201).json({
       success: true,

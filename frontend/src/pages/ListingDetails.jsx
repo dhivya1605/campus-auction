@@ -4,6 +4,7 @@ import { listingApi } from '../api/listingApi';
 import { bidApi } from '../api/bidApi';
 import { saleApi } from '../api/saleApi';
 import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
 import CountdownTimer from '../components/CountdownTimer';
 import BidHistory from '../components/BidHistory';
 import Loading from '../components/Loading';
@@ -13,6 +14,7 @@ import { getImageUrl, PLACEHOLDER_IMAGE } from '../utils/imageUrl';
 export const ListingDetails = () => {
   const { id } = useParams();
   const { user, isAuthenticated } = useAuth();
+  const { fetchNotifications } = useNotifications();
 
   const [listing, setListing] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -106,6 +108,7 @@ export const ListingDetails = () => {
       setBidSuccess(successMsg);
       // Smoothly update listing data and bids without resetting page loading state
       await fetchListing(false);
+      fetchNotifications();
     } catch (err) {
       setBidError(err.message || 'Failed to place bid');
     } finally {
@@ -119,6 +122,7 @@ export const ListingDetails = () => {
       await saleApi.closeAuction(id);
       setBidSuccess('Auction closed successfully.');
       await fetchListing(false);
+      fetchNotifications();
     } catch (err) {
       setBidError(err.message || 'Failed to close auction');
     } finally {

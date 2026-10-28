@@ -2,6 +2,10 @@ import { Listing } from '../models/Listing.js';
 import { Bid } from '../models/Bid.js';
 import { SaleOutcome } from '../models/SaleOutcome.js';
 import { ApiError } from '../utils/ApiError.js';
+import {
+  notifyAuctionClosedWinner,
+  notifyAuctionClosedNoWinner
+} from './notificationService.js';
 
 /**
  * Idempotently closes a single auction whose closing time has passed.
@@ -112,6 +116,26 @@ export const closeAuction = async (listingId, triggeredBy = null) => {
       },
       { upsert: true, new: true, runValidators: true }
     );
+  }
+
+  // Fire notifications after successful close (never let these break the return)
+  try {
+    if (!highestBid) {
+      await notifyAuctionClosedNoWinner({
+        recipientId: listing.seller,
+        listingId: listing._id,
+        listingTitle: listing.title
+      });
+    } else {
+      await notifyAuctionClosedWinner({
+        recipientId: highestBid.bidder,
+        listingId: listing._id,
+        listingTitle: listing.title,
+        amount: highestBid.amount
+      });
+    }
+  } catch (notifErr) {
+    console.error('[AuctionService] Notification error after close:', notifErr.message);
   }
 
   return {

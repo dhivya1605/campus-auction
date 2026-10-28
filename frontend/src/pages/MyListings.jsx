@@ -4,11 +4,13 @@ import { getImageUrl, PLACEHOLDER_IMAGE } from '../utils/imageUrl';
 import { listingApi } from '../api/listingApi';
 import { saleApi } from '../api/saleApi';
 import { useAuth } from '../context/AuthContext';
+import { useNotifications } from '../context/NotificationContext';
 import Loading from '../components/Loading';
 import ErrorMessage from '../components/ErrorMessage';
 
 export const MyListings = () => {
   const { user } = useAuth();
+  const { fetchNotifications } = useNotifications();
   const [myListings, setMyListings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -28,6 +30,7 @@ export const MyListings = () => {
         return sellerId && user && sellerId.toString() === user.id.toString();
       });
       setMyListings(mine);
+      fetchNotifications();
     } catch (err) {
       setError(err.message || 'Failed to fetch your listings');
     } finally {
