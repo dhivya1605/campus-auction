@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { getImageUrl, PLACEHOLDER_IMAGE } from '../utils/imageUrl';
 import { listingApi } from '../api/listingApi';
+import { saleApi } from '../api/saleApi';
 import { useAuth } from '../context/AuthContext';
 import Loading from '../components/Loading';
 import ErrorMessage from '../components/ErrorMessage';
@@ -18,8 +19,8 @@ export const MyListings = () => {
     try {
       setLoading(true);
       setError(null);
-      // Fetch listings with limit 100
-      const res = await listingApi.getListings({ limit: 100 });
+      // Fetch listings with limit 100, including cancelled for the owner's dashboard
+      const res = await listingApi.getListings({ limit: 100, includeCancelled: 'true' });
       const all = res.listings || [];
       // Filter for current user's items
       const mine = all.filter((item) => {
@@ -106,16 +107,35 @@ export const MyListings = () => {
   };
 
   // Seller cancels auction
-  const handleCancelAuction = async (listingId) => {
-    if (!window.confirm('Are you sure you want to cancel this auction? Bid history will be preserved.')) {
+  const handleCancelAuction = async (item) => {
+    const listingId = item._id || item;
+    const hasBids = Boolean(item.leadingBid || (item.currentPrice && item.currentPrice > item.startingPrice));
+
+    const confirmed = window.confirm(
+      'Are you sure you want to cancel this auction?\n\nOnce cancelled, the listing will stop accepting new bids immediately. Existing bids and auction history will be preserved.'
+    );
+    if (!confirmed) {
       return;
     }
+
+    let reason = 'Seller requested cancellation';
+    if (hasBids) {
+      const inputReason = window.prompt(
+        'Bids have already been placed on this item. Please state the cancellation reason for the public audit trail:'
+      );
+      if (!inputReason || !inputReason.trim()) {
+        setError('Cancellation aborted: A reason is required when cancelling an auction with active bids.');
+        return;
+      }
+      reason = inputReason.trim();
+    }
+
     try {
       setProcessingId(listingId);
       setActionSuccess(null);
       setError(null);
-      await listingApi.cancelListing(listingId);
-      setActionSuccess('Auction cancelled successfully.');
+      await listingApi.cancelListing(listingId, reason);
+      setActionSuccess('Auction cancelled successfully. Bid history and listing record remain preserved.');
       await fetchMyListings();
     } catch (err) {
       setError(err.message || 'Failed to cancel listing');
@@ -130,8 +150,8 @@ export const MyListings = () => {
       setProcessingId(listingId);
       setActionSuccess(null);
       setError(null);
-      await saleApi.closeAuction(listingId);
-      setActionSuccess('Auction closed and outcome generated.');
+      const res = await saleApi.closeAuction(listingId);
+      setActionSuccess(res.message || 'Auction closed successfully. Outcome generated.');
       await fetchMyListings();
     } catch (err) {
       setError(err.message || 'Failed to close auction');
@@ -282,7 +302,7 @@ export const MyListings = () => {
                         </button>
                       )}
                       <button
-                        onClick={() => handleCancelAuction(item._id)}
+                        onClick={() => handleCancelAuction(item)}
                         disabled={isProcessing}
                         className="btn btn-secondary"
                         style={{ padding: '0.4rem 0.85rem', fontSize: '0.85rem', color: 'var(--danger)' }}

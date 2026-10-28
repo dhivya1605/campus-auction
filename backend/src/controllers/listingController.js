@@ -113,6 +113,8 @@ export const getListings = async (req, res, next) => {
     if (condition) filter.condition = condition;
     if (status) {
       filter.status = status;
+    } else if (req.query.includeCancelled !== 'true' && req.query.includeCancelled !== true) {
+      filter.status = { $ne: 'cancelled' };
     }
 
     if (minPrice !== undefined || maxPrice !== undefined) {
@@ -434,7 +436,7 @@ export const updateListing = async (req, res, next) => {
 
 /**
  * Cancels an eligible listing. Only the owner can cancel.
- * Preserves bid history and updates any associated outcome record.
+ * Preserves bid history, images, and updates audit/outcome records.
  */
 export const cancelListing = async (req, res, next) => {
   try {
@@ -446,36 +448,73 @@ export const cancelListing = async (req, res, next) => {
     }
 
     // Ownership check
-    if (listing.seller.toString() !== req.user._id.toString()) {
+    const isOwner = listing.seller.toString() === req.user._id.toString();
+    const isAdmin = req.user.role === 'admin';
+    if (!isOwner && !isAdmin) {
       throw ApiError.forbidden('You are not authorized to cancel this listing');
     }
 
-    // State check
-    if (['completed', 'reserved', 'rejected', 'cancelled'].includes(listing.status)) {
+    // State check - cannot cancel closed, reserved, or already finalized auctions
+    const nonCancellable = ['completed', 'reserved', 'rejected', 'cancelled', 'failed_pickup'];
+    if (nonCancellable.includes(listing.status)) {
       throw ApiError.badRequest(`Cannot cancel an auction with status '${listing.status}'`);
     }
 
+    // Check if bidding has started
+    const bidsCount = await Bid.countDocuments({ listing: listingId });
+    const hasBids = bidsCount > 0 || listing.leadingBid !== null;
+
+    const reason =
+      req.body?.reason?.trim() ||
+      req.query?.reason?.trim() ||
+      (hasBids ? 'Seller cancelled active auction with bids' : 'Seller cancelled listing');
+
+    const previousStatus = listing.status;
     listing.status = 'cancelled';
+
+    // Record in listing edit history audit trail
+    if (!listing.editHistory) {
+      listing.editHistory = [];
+    }
+    listing.editHistory.push({
+      editedAt: new Date(),
+      editedBy: req.user._id,
+      changes: [{ field: 'status', oldValue: previousStatus, newValue: 'cancelled' }],
+      reason
+    });
+
     await listing.save();
 
-    // Update or record SaleOutcome if exists
-    const outcome = await SaleOutcome.findOne({ listing: listingId });
-    if (outcome && outcome.outcome === 'pending') {
-      outcome.outcome = 'seller_cancelled';
-      outcome.failureOrCancellationReason = 'Seller cancelled the listing';
-      outcome.auditLog.push({
-        action: 'SELLER_CANCELLED',
-        previousOutcome: outcome.outcome,
-        newOutcome: 'seller_cancelled',
-        performedBy: req.user._id,
-        note: 'Listing cancelled by seller'
-      });
-      await outcome.save();
-    }
+    // Update or upsert SaleOutcome record
+    await SaleOutcome.findOneAndUpdate(
+      { listing: listingId },
+      {
+        $setOnInsert: {
+          seller: listing.seller,
+          provisionalWinner: null,
+          winningBid: null,
+          sellerDecision: 'pending'
+        },
+        $set: {
+          outcome: 'seller_cancelled',
+          failureOrCancellationReason: reason
+        },
+        $push: {
+          auditLog: {
+            action: 'SELLER_CANCELLED',
+            previousOutcome: previousStatus,
+            newOutcome: 'seller_cancelled',
+            performedBy: req.user._id,
+            note: reason
+          }
+        }
+      },
+      { upsert: true, new: true }
+    );
 
     res.status(200).json({
       success: true,
-      message: 'Listing cancelled successfully. Bid history remains preserved.',
+      message: 'Listing cancelled successfully. Bid history and details remain preserved.',
       listing
     });
   } catch (error) {

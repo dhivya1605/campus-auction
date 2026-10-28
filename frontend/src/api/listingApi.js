@@ -18,6 +18,12 @@ export const listingApi = {
 
   updateListing: (id, data) => apiClient.patch(`/listings/${id}`, data, { requiresAuth: true }),
 
-  cancelListing: (id) => apiClient.delete(`/listings/${id}`, { requiresAuth: true })
+  cancelListing: (id, reason = '') => {
+    const query = reason ? `?reason=${encodeURIComponent(reason)}` : '';
+    return apiClient.delete(`/listings/${id}${query}`, {
+      requiresAuth: true,
+      body: reason ? { reason } : undefined
+    });
+  }
 };
 

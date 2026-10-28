@@ -234,6 +234,70 @@ describe('Listing API & Business Rules Tests', () => {
     const preservedBid = await Bid.findById(bid._id);
     assert.ok(preservedBid);
     assert.equal(preservedBid.amount, 450);
+
+    // Verify cancellation audit in editHistory
+    assert.ok(res.body.listing.editHistory.length >= 1);
+    assert.equal(res.body.listing.editHistory[0].changes[0].newValue, 'cancelled');
+
+    // 3. Cancelled auction must reject any new bids
+    const bidAfterCancel = await request(app)
+      .post(`/api/listings/${listing._id}/bids`)
+      .set(authHeader(otherUser.token))
+      .send({ amount: 500 });
+    assert.equal(bidAfterCancel.status, 400);
+
+    // 4. Completed auction cannot be cancelled
+    listing.status = 'completed';
+    await listing.save();
+    const cancelCompletedRes = await request(app)
+      .delete(`/api/listings/${listing._id}`)
+      .set(authHeader(seller.token));
+    assert.equal(cancelCompletedRes.status, 400);
+    assert.match(cancelCompletedRes.body.message, /Cannot cancel an auction with status 'completed'/);
+  });
+
+  it('DELETE /api/listings/:id rejects cancellation by unauthorized user with 403 Forbidden', async () => {
+    const listing = await Listing.create({
+      seller: seller.user._id,
+      title: 'Graphing Calculator',
+      category: 'calculator',
+      description: 'Casio color graphing calculator.',
+      condition: 'like-new',
+      startingPrice: 1500,
+      minimumBidIncrement: 100,
+      currentPrice: 1500,
+      closingTime: new Date(Date.now() + 24 * 60 * 60 * 1000),
+      status: 'active'
+    });
+
+    const res = await request(app)
+      .delete(`/api/listings/${listing._id}`)
+      .set(authHeader(otherUser.token));
+
+    assert.equal(res.status, 403);
+    assert.match(res.body.message, /not authorized to cancel this listing/);
+  });
+
+  it('POST /api/auctions/:id/close rejects closing a non-expired active auction', async () => {
+    const listing = await Listing.create({
+      seller: seller.user._id,
+      title: 'Lab Coat',
+      category: 'other',
+      description: 'White chemistry lab coat size M.',
+      condition: 'good',
+      startingPrice: 300,
+      minimumBidIncrement: 50,
+      currentPrice: 300,
+      closingTime: new Date(Date.now() + 2 * 60 * 60 * 1000), // 2 hours in future
+      status: 'active'
+    });
+
+    const res = await request(app)
+      .post(`/api/auctions/${listing._id}/close`)
+      .set(authHeader(seller.token));
+
+    assert.equal(res.status, 400);
+    assert.match(res.body.message, /cannot be closed before its closing time has passed/);
   });
 });
 
