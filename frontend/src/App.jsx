@@ -4,6 +4,7 @@ import Navbar from './components/Navbar';
 import Marketplace from './pages/Marketplace';
 import ListingDetails from './pages/ListingDetails';
 import CreateListing from './pages/CreateListing';
+import EditListing from './pages/EditListing';
 import MyListings from './pages/MyListings';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -33,6 +34,14 @@ export const App = () => {
             element={
               <ProtectedRoute>
                 <MyListings />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/edit-listing/:id"
+            element={
+              <ProtectedRoute>
+                <EditListing />
               </ProtectedRoute>
             }
           />

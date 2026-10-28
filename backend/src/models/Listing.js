@@ -14,6 +14,32 @@ export const LISTING_STATUSES = [
   'failed_pickup'
 ];
 
+const editHistoryEntrySchema = new mongoose.Schema(
+  {
+    editedAt: {
+      type: Date,
+      default: Date.now
+    },
+    editedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true
+    },
+    changes: [
+      {
+        field: { type: String, required: true },
+        oldValue: { type: mongoose.Schema.Types.Mixed },
+        newValue: { type: mongoose.Schema.Types.Mixed }
+      }
+    ],
+    reason: {
+      type: String,
+      default: ''
+    }
+  },
+  { _id: true }
+);
+
 const listingSchema = new mongoose.Schema(
   {
     seller: {
@@ -106,6 +132,10 @@ const listingSchema = new mongoose.Schema(
       enum: LISTING_STATUSES,
       default: 'scheduled',
       index: true
+    },
+    editHistory: {
+      type: [editHistoryEntrySchema],
+      default: []
     }
   },
   {

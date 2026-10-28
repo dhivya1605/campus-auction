@@ -192,9 +192,13 @@ export const MyListings = () => {
               >
                 <div style={{ display: 'flex', gap: '1rem', alignItems: 'center' }}>
                   <img
-                    src={item.photos?.[0] || 'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?auto=format&fit=crop&w=600&q=80'}
+                    src={getImageUrl(item.photos?.[0])}
                     alt={item.title}
                     style={{ width: '80px', height: '80px', objectFit: 'cover', borderRadius: 'var(--radius-sm)' }}
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      e.target.src = PLACEHOLDER_IMAGE;
+                    }}
                   />
                   <div>
                     <Link to={`/listings/${item._id}`} style={{ fontSize: '1.1rem', fontWeight: 600 }}>
@@ -260,6 +264,13 @@ export const MyListings = () => {
 
                   {(item.status === 'active' || item.status === 'scheduled') && (
                     <>
+                      <Link
+                        to={`/edit-listing/${item._id}`}
+                        className="btn btn-secondary"
+                        style={{ padding: '0.4rem 0.85rem', fontSize: '0.85rem' }}
+                      >
+                        ✏️ Edit Listing
+                      </Link>
                       {isExpired && (
                         <button
                           onClick={() => handleCloseAuction(item._id)}

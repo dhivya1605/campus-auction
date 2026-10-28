@@ -2,7 +2,7 @@ import { Listing } from '../models/Listing.js';
 import { Bid } from '../models/Bid.js';
 import { SaleOutcome } from '../models/SaleOutcome.js';
 import { ApiError } from '../utils/ApiError.js';
-import { cleanupFile } from '../middleware/uploadMiddleware.js';
+import { cleanupFile, cleanupFiles } from '../middleware/uploadMiddleware.js';
 
 /**
  * Creates a new listing for an authenticated seller.
@@ -21,7 +21,9 @@ export const createListing = async (req, res, next) => {
     } = req.body;
 
     let photos = [];
-    if (req.file) {
+    if (req.uploadedPhotos && req.uploadedPhotos.length > 0) {
+      photos = req.uploadedPhotos;
+    } else if (req.file) {
       photos = [`/uploads/${req.file.filename}`];
     } else if (req.body.photos) {
       if (Array.isArray(req.body.photos)) {
@@ -34,6 +36,11 @@ export const createListing = async (req, res, next) => {
           photos = [req.body.photos];
         }
       }
+    }
+
+    if (photos.length > 5) {
+      if (req.filesList) cleanupFiles(req.filesList);
+      throw ApiError.badRequest('Maximum 5 images allowed per listing.');
     }
 
     const parsedStart = startTime ? new Date(startTime) : new Date();
@@ -64,7 +71,9 @@ export const createListing = async (req, res, next) => {
       listing
     });
   } catch (error) {
-    if (req.file) {
+    if (req.filesList && req.filesList.length > 0) {
+      cleanupFiles(req.filesList);
+    } else if (req.file) {
       cleanupFile(req.file.path);
     }
     next(error);
@@ -175,6 +184,7 @@ export const getListingById = async (req, res, next) => {
 
     const listing = await Listing.findById(listingId)
       .populate('seller', 'name')
+      .populate('editHistory.editedBy', 'name')
       .populate({
         path: 'leadingBid',
         select: 'amount createdAt bidder',
@@ -248,13 +258,17 @@ export const updateListing = async (req, res, next) => {
       description,
       condition,
       photos,
+      retainedPhotos,
       startingPrice,
       minimumBidIncrement,
-      closingTime
+      closingTime,
+      reason
     } = req.body;
 
+    const changes = [];
+
     if (hasBids) {
-      // Disallow changes to critical auction terms
+      // Disallow changes to critical auction terms once bidding has started
       if (
         startingPrice !== undefined ||
         minimumBidIncrement !== undefined ||
@@ -266,36 +280,142 @@ export const updateListing = async (req, res, next) => {
       }
     }
 
-    // Apply allowed updates
-    if (title !== undefined) listing.title = title;
-    if (category !== undefined) listing.category = category;
-    if (description !== undefined) listing.description = description;
-    if (condition !== undefined) listing.condition = condition;
-    if (photos !== undefined) listing.photos = photos; // preserve existing if not updated
-    // Handle new uploaded image
-    if (req.file) {
-      // Replace existing photos with the new one
-      listing.photos = [`/uploads/${req.file.filename}`];
+    // Apply & track text field updates
+    if (title !== undefined && title.trim() !== listing.title) {
+      changes.push({ field: 'title', oldValue: listing.title, newValue: title.trim() });
+      listing.title = title.trim();
+    }
+    if (category !== undefined && category !== listing.category) {
+      changes.push({ field: 'category', oldValue: listing.category, newValue: category });
+      listing.category = category;
+    }
+    if (description !== undefined && description.trim() !== listing.description) {
+      changes.push({ field: 'description', oldValue: listing.description, newValue: description.trim() });
+      listing.description = description.trim();
+    }
+    if (condition !== undefined && condition !== listing.condition) {
+      changes.push({ field: 'condition', oldValue: listing.condition, newValue: condition });
+      listing.condition = condition;
+    }
+
+    // Handle photos (multiple images, retaining existing, adding new, or deleting)
+    const oldPhotos = [...(listing.photos || [])];
+    let newPhotosList = null;
+
+    const shouldRemoveAll =
+      req.body.removePhoto === 'true' ||
+      req.body.removePhoto === true ||
+      req.body.deletePhoto === 'true';
+
+    const uploaded = req.uploadedPhotos || (req.file ? [`/uploads/${req.file.filename}`] : []);
+
+    if (shouldRemoveAll) {
+      // Seller requested removing all existing photos; only keep newly uploaded (if any)
+      newPhotosList = [...uploaded];
+    } else if (retainedPhotos !== undefined) {
+      // Seller sent specific subset of existing photos to retain
+      let parsedRetained = [];
+      if (Array.isArray(retainedPhotos)) {
+        parsedRetained = retainedPhotos;
+      } else if (typeof retainedPhotos === 'string') {
+        try {
+          const parsed = JSON.parse(retainedPhotos);
+          parsedRetained = Array.isArray(parsed) ? parsed : [retainedPhotos];
+        } catch {
+          parsedRetained = retainedPhotos ? [retainedPhotos] : [];
+        }
+      }
+      // Safety filter: ensure retained photos actually belonged to the listing's photos
+      const safeRetained = parsedRetained.filter((p) => oldPhotos.includes(p));
+      newPhotosList = [...safeRetained, ...uploaded];
+    } else if (uploaded.length > 0) {
+      // If new files were uploaded and no retainedPhotos specified, replace photos with new ones
+      newPhotosList = [...uploaded];
+    } else if (photos !== undefined) {
+      // If photos array was explicitly passed in body
+      const parsedPhotos = Array.isArray(photos) ? photos : [photos];
+      newPhotosList = parsedPhotos;
+    }
+
+    if (newPhotosList !== null) {
+      if (newPhotosList.length > 5) {
+        if (req.filesList) cleanupFiles(req.filesList);
+        throw ApiError.badRequest('A listing cannot have more than 5 images.');
+      }
+
+      // Check if photos actually changed
+      const hasPhotoChanges =
+        oldPhotos.length !== newPhotosList.length ||
+        oldPhotos.some((p, i) => p !== newPhotosList[i]);
+
+      if (hasPhotoChanges) {
+        changes.push({ field: 'photos', oldValue: oldPhotos, newValue: newPhotosList });
+        listing.photos = newPhotosList;
+      }
     }
 
     if (!hasBids) {
-      if (startingPrice !== undefined) {
-        listing.startingPrice = startingPrice;
-        listing.currentPrice = startingPrice;
+      if (startingPrice !== undefined && Number(startingPrice) !== listing.startingPrice) {
+        const newStart = parseInt(startingPrice, 10);
+        changes.push({ field: 'startingPrice', oldValue: listing.startingPrice, newValue: newStart });
+        listing.startingPrice = newStart;
+        listing.currentPrice = newStart;
       }
-      if (minimumBidIncrement !== undefined) {
-        listing.minimumBidIncrement = minimumBidIncrement;
+      if (
+        minimumBidIncrement !== undefined &&
+        Number(minimumBidIncrement) !== listing.minimumBidIncrement
+      ) {
+        const newInc = parseInt(minimumBidIncrement, 10);
+        changes.push({
+          field: 'minimumBidIncrement',
+          oldValue: listing.minimumBidIncrement,
+          newValue: newInc
+        });
+        listing.minimumBidIncrement = newInc;
       }
       if (closingTime !== undefined) {
         const newClosing = new Date(closingTime);
         if (newClosing <= new Date(listing.startTime)) {
           throw ApiError.badRequest('Closing time must be after the start time');
         }
-        listing.closingTime = newClosing;
+        if (newClosing <= new Date()) {
+          throw ApiError.badRequest('Closing time must be in the future');
+        }
+        if (newClosing.getTime() !== new Date(listing.closingTime).getTime()) {
+          changes.push({
+            field: 'closingTime',
+            oldValue: listing.closingTime,
+            newValue: newClosing
+          });
+          listing.closingTime = newClosing;
+        }
       }
     }
 
+    // Record edit in audit trail if any fields changed
+    if (changes.length > 0) {
+      if (!listing.editHistory) {
+        listing.editHistory = [];
+      }
+      listing.editHistory.push({
+        editedAt: new Date(),
+        editedBy: req.user._id,
+        changes,
+        reason: reason || (hasBids ? 'Seller listing correction' : 'Listing update')
+      });
+    }
+
     await listing.save();
+
+    // After successful database update, clean up unreferenced removed files from disk
+    if (newPhotosList !== null) {
+      const removedFiles = oldPhotos.filter((p) => !newPhotosList.includes(p));
+      removedFiles.forEach((p) => {
+        if (p && typeof p === 'string' && p.startsWith('/uploads/')) {
+          cleanupFile(p);
+        }
+      });
+    }
 
     res.status(200).json({
       success: true,
@@ -303,6 +423,11 @@ export const updateListing = async (req, res, next) => {
       listing
     });
   } catch (error) {
+    if (req.filesList && req.filesList.length > 0) {
+      cleanupFiles(req.filesList);
+    } else if (req.file) {
+      cleanupFile(req.file.path);
+    }
     next(error);
   }
 };

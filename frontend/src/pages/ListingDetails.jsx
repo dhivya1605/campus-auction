@@ -64,7 +64,10 @@ export const ListingDetails = () => {
     try {
       setBidSubmitting(true);
       const response = await bidApi.placeBid(id, amountNum);
-      setBidSuccess(`Bid of ₹${amountNum} placed successfully!`);
+      const successMsg = response.extended
+        ? `Bid of ₹${amountNum} placed! ⏱️ Anti-sniping protection triggered: closing time extended by 60 seconds!`
+        : `Bid of ₹${amountNum} placed successfully!`;
+      setBidSuccess(successMsg);
       // Refresh listing data & bids from backend
       await fetchListing();
     } catch (err) {
@@ -110,9 +113,18 @@ export const ListingDetails = () => {
     ? listing.startingPrice
     : listing.currentPrice + listing.minimumBidIncrement;
 
-  const photosList = listing.photos && listing.photos.length > 0
+  const rawPhotos = listing.photos && listing.photos.length > 0
     ? listing.photos
-    : ['https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?auto=format&fit=crop&w=600&q=80'];
+    : [PLACEHOLDER_IMAGE];
+  const photosList = rawPhotos.map((p) => getImageUrl(p));
+
+  const handlePrevPhoto = () => {
+    setSelectedPhoto((prev) => (prev === 0 ? photosList.length - 1 : prev - 1));
+  };
+
+  const handleNextPhoto = () => {
+    setSelectedPhoto((prev) => (prev === photosList.length - 1 ? 0 : prev + 1));
+  };
 
   return (
     <div className="container">
@@ -123,15 +135,91 @@ export const ListingDetails = () => {
       <div className="details-grid">
         {/* Left Column: Photos & Description */}
         <div>
-          <div className="gallery-main">
+          {/* Interactive Photo Gallery */}
+          <div className="gallery-main" style={{ position: 'relative', overflow: 'hidden' }}>
             <img
               src={photosList[selectedPhoto] || photosList[0]}
               alt={listing.title}
               onError={(e) => {
                 e.target.onerror = null;
-                e.target.src = 'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?auto=format&fit=crop&w=600&q=80';
+                e.target.src = PLACEHOLDER_IMAGE;
               }}
             />
+
+            {/* Gallery Counter */}
+            {photosList.length > 1 && (
+              <span
+                style={{
+                  position: 'absolute',
+                  bottom: '10px',
+                  right: '10px',
+                  backgroundColor: 'rgba(0, 0, 0, 0.65)',
+                  color: '#ffffff',
+                  fontSize: '0.75rem',
+                  padding: '4px 8px',
+                  borderRadius: '4px',
+                  fontWeight: 600
+                }}
+              >
+                {selectedPhoto + 1} of {photosList.length}
+              </span>
+            )}
+
+            {/* Previous / Next Controls */}
+            {photosList.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={handlePrevPhoto}
+                  style={{
+                    position: 'absolute',
+                    top: '50%',
+                    left: '10px',
+                    transform: 'translateY(-50%)',
+                    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '50%',
+                    width: '36px',
+                    height: '36px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '18px',
+                    lineHeight: 1
+                  }}
+                  title="Previous photo"
+                >
+                  ‹
+                </button>
+                <button
+                  type="button"
+                  onClick={handleNextPhoto}
+                  style={{
+                    position: 'absolute',
+                    top: '50%',
+                    right: '10px',
+                    transform: 'translateY(-50%)',
+                    backgroundColor: 'rgba(0, 0, 0, 0.55)',
+                    color: '#ffffff',
+                    border: 'none',
+                    borderRadius: '50%',
+                    width: '36px',
+                    height: '36px',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '18px',
+                    lineHeight: 1
+                  }}
+                  title="Next photo"
+                >
+                  ›
+                </button>
+              </>
+            )}
           </div>
 
           {photosList.length > 1 && (
@@ -148,10 +236,19 @@ export const ListingDetails = () => {
                     border: selectedPhoto === idx ? '2px solid var(--primary)' : '1px solid var(--border)',
                     cursor: 'pointer',
                     padding: 0,
-                    background: '#f1f5f9'
+                    background: '#f1f5f9',
+                    flexShrink: 0
                   }}
                 >
-                  <img src={photoUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <img
+                    src={photoUrl}
+                    alt=""
+                    style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    onError={(e) => {
+                      e.target.onerror = null;
+                      e.target.src = PLACEHOLDER_IMAGE;
+                    }}
+                  />
                 </button>
               ))}
             </div>
@@ -167,6 +264,64 @@ export const ListingDetails = () => {
           <div style={{ marginTop: '2rem' }}>
             <h2 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '0.75rem' }}>Public Bid History</h2>
             <BidHistory bids={listing.bids || []} />
+          </div>
+
+          {/* Listing Edit History / Audit Trail */}
+          <div style={{ marginTop: '2rem' }}>
+            <h2 style={{ fontSize: '1.25rem', fontWeight: 600, marginBottom: '0.75rem' }}>
+              Listing Edit History
+            </h2>
+            {listing.editHistory && listing.editHistory.length > 0 ? (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                {listing.editHistory.map((entry, idx) => (
+                  <div
+                    key={entry._id || idx}
+                    style={{
+                      backgroundColor: '#ffffff',
+                      border: '1px solid var(--border)',
+                      borderRadius: 'var(--radius-sm)',
+                      padding: '1rem',
+                      fontSize: '0.85rem'
+                    }}
+                  >
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem', color: 'var(--text-muted)' }}>
+                      <span>
+                        ✏️ Edited by <strong>{entry.editedBy?.name || 'Seller / System'}</strong>
+                      </span>
+                      <span>{new Date(entry.editedAt).toLocaleString('en-IN')}</span>
+                    </div>
+
+                    {entry.reason && (
+                      <div style={{ fontStyle: 'italic', marginBottom: '0.5rem', color: 'var(--text-main)' }}>
+                        "{entry.reason}"
+                      </div>
+                    )}
+
+                    <ul style={{ margin: 0, paddingLeft: '1.25rem', display: 'flex', flexDirection: 'column', gap: '0.25rem' }}>
+                      {entry.changes &&
+                        entry.changes.map((ch, cIdx) => (
+                          <li key={cIdx}>
+                            <strong>{ch.field}:</strong>{' '}
+                            {ch.field === 'photos' ? (
+                              <span>Updated photos ({Array.isArray(ch.newValue) ? ch.newValue.length : 0} image(s))</span>
+                            ) : ch.field === 'closingTime' ? (
+                              <span>Closing time set to {new Date(ch.newValue).toLocaleString('en-IN')}</span>
+                            ) : (
+                              <span>
+                                Changed from "{String(ch.oldValue || '')}" to "{String(ch.newValue || '')}"
+                              </span>
+                            )}
+                          </li>
+                        ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p style={{ fontSize: '0.875rem', color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                No edits made since initial publication. Original auction terms intact.
+              </p>
+            )}
           </div>
         </div>
 

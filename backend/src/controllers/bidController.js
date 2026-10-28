@@ -97,6 +97,28 @@ export const placeBid = async (req, res, next) => {
           { session }
         );
 
+        // Anti-sniping policy: if valid bid arrives within final 30 seconds, extend closingTime to 60s from now
+        const remainingMs = new Date(lockedListing.closingTime).getTime() - now.getTime();
+        let wasExtended = false;
+        if (remainingMs > 0 && remainingMs <= 30 * 1000) {
+          wasExtended = true;
+          const oldClosing = lockedListing.closingTime;
+          lockedListing.closingTime = new Date(now.getTime() + 60 * 1000);
+          if (!lockedListing.editHistory) lockedListing.editHistory = [];
+          lockedListing.editHistory.push({
+            editedAt: now,
+            editedBy: bidderId,
+            changes: [
+              {
+                field: 'closingTime',
+                oldValue: oldClosing,
+                newValue: lockedListing.closingTime
+              }
+            ],
+            reason: 'Anti-sniping extension: bid placed within final 30 seconds of auction'
+          });
+        }
+
         // Update listing
         lockedListing.currentPrice = amount;
         lockedListing.leadingBid = bid._id;
@@ -110,7 +132,9 @@ export const placeBid = async (req, res, next) => {
 
         return res.status(201).json({
           success: true,
-          message: 'Bid placed successfully',
+          message: wasExtended
+            ? 'Bid placed successfully! Auction closing time extended by anti-sniping protection.'
+            : 'Bid placed successfully',
           bid: {
             id: populatedBid._id,
             amount: populatedBid.amount,
@@ -120,7 +144,9 @@ export const placeBid = async (req, res, next) => {
             },
             createdAt: populatedBid.createdAt
           },
-          currentPrice: lockedListing.currentPrice
+          currentPrice: lockedListing.currentPrice,
+          closingTime: lockedListing.closingTime,
+          extended: wasExtended
         });
       } catch (txnError) {
         await session.abortTransaction().catch(() => { });
@@ -141,6 +167,11 @@ export const placeBid = async (req, res, next) => {
     }
 
     // Atomic Conditional Update (Compare-And-Swap fallback)
+    // Anti-sniping calculation
+    const remainingMs = new Date(listing.closingTime).getTime() - now.getTime();
+    const shouldExtend = remainingMs > 0 && remainingMs <= 30 * 1000;
+    const newClosingTime = shouldExtend ? new Date(now.getTime() + 60 * 1000) : undefined;
+
     // Create new bid record first
     const createdBid = await Bid.create({
       listing: listing._id,
@@ -166,6 +197,24 @@ export const placeBid = async (req, res, next) => {
       }
     };
 
+    if (shouldExtend) {
+      update.$set.closingTime = newClosingTime;
+      update.$push = {
+        editHistory: {
+          editedAt: now,
+          editedBy: bidderId,
+          changes: [
+            {
+              field: 'closingTime',
+              oldValue: listing.closingTime,
+              newValue: newClosingTime
+            }
+          ],
+          reason: 'Anti-sniping extension: bid placed within final 30 seconds of auction'
+        }
+      };
+    }
+
     const updatedListing = await Listing.findOneAndUpdate(filter, update, {
       new: true
     });
@@ -183,7 +232,9 @@ export const placeBid = async (req, res, next) => {
 
     return res.status(201).json({
       success: true,
-      message: 'Bid placed successfully',
+      message: shouldExtend
+        ? 'Bid placed successfully! Auction closing time extended by anti-sniping protection.'
+        : 'Bid placed successfully',
       bid: {
         id: populatedBid._id,
         amount: populatedBid.amount,
@@ -193,7 +244,9 @@ export const placeBid = async (req, res, next) => {
         },
         createdAt: populatedBid.createdAt
       },
-      currentPrice: updatedListing.currentPrice
+      currentPrice: updatedListing.currentPrice,
+      closingTime: updatedListing.closingTime,
+      extended: shouldExtend
     });
   } catch (error) {
     if (session) {

@@ -4,7 +4,8 @@ import { listingApi } from '../api/listingApi';
 
 const CATEGORIES = ['cycle', 'calculator', 'books', 'electronics', 'other'];
 const CONDITIONS = ['new', 'like-new', 'good', 'fair', 'poor'];
-const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB per image
+const MAX_IMAGES = 5;
 const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 export const CreateListing = () => {
@@ -29,61 +30,77 @@ export const CreateListing = () => {
     closingTime: formattedDefaultClosing
   });
 
-  const [selectedFile, setSelectedFile] = useState(null);
-  const [previewUrl, setPreviewUrl] = useState(null);
+  // Array of { id, file, previewUrl }
+  const [selectedImages, setSelectedImages] = useState([]);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
 
-  // Cleanup blob URL when component unmounts or preview changes
+  // Cleanup blob URLs when component unmounts
   useEffect(() => {
     return () => {
-      if (previewUrl && previewUrl.startsWith('blob:')) {
-        URL.revokeObjectURL(previewUrl);
-      }
+      selectedImages.forEach((img) => {
+        if (img.previewUrl && img.previewUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(img.previewUrl);
+        }
+      });
     };
-  }, [previewUrl]);
+  }, [selectedImages]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
-  const handleFileChange = (e) => {
+  const handleFilesSelect = (e) => {
     setError(null);
-    const file = e.target.files?.[0];
-    if (!file) return;
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
 
-    // Validate type
-    if (!ALLOWED_TYPES.includes(file.type.toLowerCase())) {
-      setError('Invalid file format. Please select a JPEG, PNG, or WebP image.');
+    const availableSlots = MAX_IMAGES - selectedImages.length;
+    if (availableSlots <= 0) {
+      setError(`Maximum limit of ${MAX_IMAGES} images already reached.`);
       if (fileInputRef.current) fileInputRef.current.value = '';
       return;
     }
 
-    // Validate size
-    if (file.size > MAX_FILE_SIZE) {
-      setError(`Image is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum allowed size is 5 MB.`);
-      if (fileInputRef.current) fileInputRef.current.value = '';
-      return;
+    if (files.length > availableSlots) {
+      setError(`You can only add ${availableSlots} more image${availableSlots > 1 ? 's' : ''}. Maximum is ${MAX_IMAGES}.`);
     }
 
-    if (previewUrl && previewUrl.startsWith('blob:')) {
-      URL.revokeObjectURL(previewUrl);
+    const filesToAdd = files.slice(0, availableSlots);
+    const newItems = [];
+
+    for (const file of filesToAdd) {
+      if (!ALLOWED_TYPES.includes(file.type.toLowerCase())) {
+        setError(`File "${file.name}" has an invalid type. Only JPEG, PNG, and WebP are allowed.`);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
+      }
+      if (file.size > MAX_FILE_SIZE) {
+        setError(`File "${file.name}" is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum allowed is 5 MB.`);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+        return;
+      }
+
+      newItems.push({
+        id: `${file.name}-${Date.now()}-${Math.random()}`,
+        file,
+        previewUrl: URL.createObjectURL(file)
+      });
     }
 
-    setSelectedFile(file);
-    setPreviewUrl(URL.createObjectURL(file));
+    setSelectedImages((prev) => [...prev, ...newItems]);
+    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleRemoveImage = () => {
-    if (previewUrl && previewUrl.startsWith('blob:')) {
-      URL.revokeObjectURL(previewUrl);
-    }
-    setSelectedFile(null);
-    setPreviewUrl(null);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
-    }
+  const handleRemoveImage = (idToRemove) => {
+    setSelectedImages((prev) => {
+      const itemToRemove = prev.find((item) => item.id === idToRemove);
+      if (itemToRemove?.previewUrl && itemToRemove.previewUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(itemToRemove.previewUrl);
+      }
+      return prev.filter((item) => item.id !== idToRemove);
+    });
   };
 
   const handleSubmit = async (e) => {
@@ -106,9 +123,10 @@ export const CreateListing = () => {
     payload.append('minimumBidIncrement', String(parseInt(formData.minimumBidIncrement, 10)));
     payload.append('closingTime', closingDate.toISOString());
 
-    if (selectedFile) {
-      payload.append('image', selectedFile);
-    }
+    // Append up to 5 images
+    selectedImages.forEach((img) => {
+      payload.append('images', img.file);
+    });
 
     try {
       setSubmitting(true);
@@ -130,12 +148,12 @@ export const CreateListing = () => {
       <div className="page-header">
         <h1 className="page-title">Create Auction Listing</h1>
         <p className="page-subtitle">
-          List an item for second-hand auction to campus students.
+          List an item for second-hand auction to campus students. Upload up to 5 photos.
         </p>
       </div>
 
       <div style={{ backgroundColor: '#ffffff', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: '2rem' }}>
-        {error && <div className="alert alert-danger">{error}</div>}
+        {error && <div className="alert alert-danger" style={{ marginBottom: '1.25rem' }}>{error}</div>}
 
         <form onSubmit={handleSubmit}>
           <div className="form-group">
@@ -204,6 +222,7 @@ export const CreateListing = () => {
               id="description"
               name="description"
               required
+              rows={4}
               minLength={10}
               maxLength={3000}
               placeholder="Describe item condition, age, usage, and any accessories included..."
@@ -213,105 +232,136 @@ export const CreateListing = () => {
             />
           </div>
 
-          {/* Local Image Upload Control */}
-          <div className="form-group">
-            <label className="form-label">
-              Product Image
-            </label>
+          {/* Multiple Image Upload Control */}
+          <div className="form-group" style={{ marginTop: '1.5rem', borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.5rem' }}>
+              <label className="form-label" style={{ marginBottom: 0 }}>
+                Product Photos (Up to 5)
+              </label>
+              <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+                {selectedImages.length} of {MAX_IMAGES} selected
+              </span>
+            </div>
 
             <input
               ref={fileInputRef}
               type="file"
               id="imageUpload"
+              multiple
               accept="image/jpeg,image/png,image/webp"
-              onChange={handleFileChange}
+              onChange={handleFilesSelect}
               style={{ display: 'none' }}
+              disabled={selectedImages.length >= MAX_IMAGES}
             />
 
-            {!previewUrl ? (
+            {/* Selected Images Grid */}
+            {selectedImages.length > 0 && (
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))',
+                  gap: '0.75rem',
+                  marginBottom: '1rem'
+                }}
+              >
+                {selectedImages.map((img, index) => (
+                  <div
+                    key={img.id}
+                    style={{
+                      position: 'relative',
+                      height: '110px',
+                      borderRadius: 'var(--radius-sm)',
+                      overflow: 'hidden',
+                      border: index === 0 ? '2px solid var(--primary)' : '1px solid var(--border)',
+                      backgroundColor: '#f1f5f9'
+                    }}
+                  >
+                    <img
+                      src={img.previewUrl}
+                      alt={`Preview ${index + 1}`}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                    />
+                    {index === 0 && (
+                      <span
+                        style={{
+                          position: 'absolute',
+                          top: '4px',
+                          left: '4px',
+                          background: 'var(--primary)',
+                          color: '#fff',
+                          fontSize: '0.65rem',
+                          padding: '2px 5px',
+                          borderRadius: '3px',
+                          fontWeight: 600
+                        }}
+                      >
+                        Main Photo
+                      </span>
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleRemoveImage(img.id)}
+                      style={{
+                        position: 'absolute',
+                        top: '4px',
+                        right: '4px',
+                        background: 'rgba(0,0,0,0.65)',
+                        color: '#fff',
+                        border: 'none',
+                        borderRadius: '50%',
+                        width: '22px',
+                        height: '22px',
+                        cursor: 'pointer',
+                        fontSize: '12px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        lineHeight: 1
+                      }}
+                      title="Remove image"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {selectedImages.length < MAX_IMAGES && (
               <div
                 style={{
                   border: '2px dashed var(--border)',
                   borderRadius: 'var(--radius-sm)',
-                  padding: '2rem 1rem',
+                  padding: '1.5rem 1rem',
                   textAlign: 'center',
                   backgroundColor: '#fafafa',
                   cursor: 'pointer'
                 }}
                 onClick={() => fileInputRef.current?.click()}
               >
-                <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📷</div>
+                <div style={{ fontSize: '1.75rem', marginBottom: '0.25rem' }}>📷</div>
                 <p style={{ fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.25rem' }}>
-                  Select product photo from your device
+                  {selectedImages.length === 0 ? 'Choose product photos from your device' : 'Add more photos'}
                 </p>
-                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
-                  Supports JPEG, PNG, or WebP (up to 5 MB)
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '0.75rem' }}>
+                  Supports JPEG, PNG, or WebP (max 5 MB each, up to {MAX_IMAGES - selectedImages.length} more)
                 </p>
                 <button
                   type="button"
                   className="btn btn-secondary"
+                  style={{ padding: '0.4rem 1rem', fontSize: '0.85rem' }}
                   onClick={(e) => {
                     e.stopPropagation();
                     fileInputRef.current?.click();
                   }}
                 >
-                  Choose Image
+                  📁 Select Images
                 </button>
-              </div>
-            ) : (
-              <div
-                style={{
-                  border: '1px solid var(--border)',
-                  borderRadius: 'var(--radius-sm)',
-                  padding: '1rem',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '1rem',
-                  backgroundColor: '#fafafa'
-                }}
-              >
-                <img
-                  src={previewUrl}
-                  alt="Preview"
-                  style={{
-                    width: '90px',
-                    height: '90px',
-                    objectFit: 'cover',
-                    borderRadius: 'var(--radius-sm)',
-                    border: '1px solid var(--border)'
-                  }}
-                />
-                <div style={{ flexGrow: 1 }}>
-                  <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-main)' }}>
-                    {selectedFile?.name}
-                  </div>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
-                    {(selectedFile?.size / 1024).toFixed(0)} KB • Ready to upload
-                  </div>
-                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
-                    <button
-                      type="button"
-                      className="btn btn-secondary"
-                      style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem' }}
-                      onClick={() => fileInputRef.current?.click()}
-                    >
-                      Choose Different Image
-                    </button>
-                    <button
-                      type="button"
-                      className="btn btn-danger"
-                      style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem' }}
-                      onClick={handleRemoveImage}
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </div>
               </div>
             )}
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginTop: '1.5rem', borderTop: '1px solid var(--border)', paddingTop: '1.5rem' }}>
             <div className="form-group">
               <label className="form-label" htmlFor="startingPrice">
                 Starting Price (₹ INR) *
@@ -321,29 +371,33 @@ export const CreateListing = () => {
                 type="number"
                 name="startingPrice"
                 required
-                min={0}
-                step={1}
+                min="0"
+                step="1"
+                placeholder="1000"
                 className="form-control"
                 value={formData.startingPrice}
                 onChange={handleChange}
               />
+              <span className="form-help">Minimum price to open bidding.</span>
             </div>
 
             <div className="form-group">
               <label className="form-label" htmlFor="minimumBidIncrement">
-                Min Bid Increment (₹ INR) *
+                Minimum Bid Increment (₹ INR) *
               </label>
               <input
                 id="minimumBidIncrement"
                 type="number"
                 name="minimumBidIncrement"
                 required
-                min={1}
-                step={1}
+                min="1"
+                step="1"
+                placeholder="50"
                 className="form-control"
                 value={formData.minimumBidIncrement}
                 onChange={handleChange}
               />
+              <span className="form-help">Each next bid must increase by at least this.</span>
             </div>
           </div>
 
@@ -360,19 +414,27 @@ export const CreateListing = () => {
               value={formData.closingTime}
               onChange={handleChange}
             />
-            <div className="form-help">
-              Auction closes automatically after this deadline.
-            </div>
+            <span className="form-help">Bidding will automatically stop after this time.</span>
           </div>
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="btn btn-primary btn-block"
-            style={{ padding: '0.875rem', marginTop: '1rem', fontSize: '1rem' }}
-          >
-            {submitting ? 'Creating Auction...' : 'Publish Auction Listing'}
-          </button>
+          <div style={{ display: 'flex', gap: '1rem', marginTop: '2rem' }}>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="btn btn-primary"
+              style={{ flex: 1, padding: '0.85rem' }}
+            >
+              {submitting ? 'Creating Listing...' : 'Publish Auction Listing'}
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => navigate('/')}
+              style={{ padding: '0.85rem 1.5rem' }}
+            >
+              Cancel
+            </button>
+          </div>
         </form>
       </div>
     </div>
