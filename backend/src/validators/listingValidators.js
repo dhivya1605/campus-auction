@@ -28,12 +28,20 @@ export const createListingValidator = [
     .isIn(LISTING_CONDITIONS)
     .withMessage(`Condition must be one of: ${LISTING_CONDITIONS.join(', ')}`),
   body('photos')
-    .isArray({ min: 1 })
-    .withMessage('Photos must be an array with at least one photo URL/reference'),
-  body('photos.*')
-    .trim()
-    .notEmpty()
-    .withMessage('Photo URL or reference cannot be empty'),
+    .optional()
+    .customSanitizer((val) => {
+      if (!val) return [];
+      if (Array.isArray(val)) return val;
+      if (typeof val === 'string') {
+        try {
+          const parsed = JSON.parse(val);
+          return Array.isArray(parsed) ? parsed : [val];
+        } catch {
+          return [val];
+        }
+      }
+      return [];
+    }),
   body('startingPrice')
     .notEmpty()
     .withMessage('Starting price is required')

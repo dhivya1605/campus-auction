@@ -56,12 +56,7 @@ const listingSchema = new mongoose.Schema(
     },
     photos: {
       type: [String],
-      validate: {
-        validator(arr) {
-          return Array.isArray(arr) && arr.length > 0;
-        },
-        message: 'At least one photo URL is required'
-      }
+      default: []
     },
     startingPrice: {
       type: Number,

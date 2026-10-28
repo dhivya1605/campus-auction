@@ -2,6 +2,7 @@ import { Listing } from '../models/Listing.js';
 import { Bid } from '../models/Bid.js';
 import { SaleOutcome } from '../models/SaleOutcome.js';
 import { ApiError } from '../utils/ApiError.js';
+import { cleanupFile } from '../middleware/uploadMiddleware.js';
 
 /**
  * Creates a new listing for an authenticated seller.
@@ -13,12 +14,27 @@ export const createListing = async (req, res, next) => {
       category,
       description,
       condition,
-      photos,
       startingPrice,
       minimumBidIncrement,
       startTime,
       closingTime
     } = req.body;
+
+    let photos = [];
+    if (req.file) {
+      photos = [`/uploads/${req.file.filename}`];
+    } else if (req.body.photos) {
+      if (Array.isArray(req.body.photos)) {
+        photos = req.body.photos;
+      } else if (typeof req.body.photos === 'string') {
+        try {
+          const parsed = JSON.parse(req.body.photos);
+          photos = Array.isArray(parsed) ? parsed : [req.body.photos];
+        } catch {
+          photos = [req.body.photos];
+        }
+      }
+    }
 
     const parsedStart = startTime ? new Date(startTime) : new Date();
     const parsedClosing = new Date(closingTime);
@@ -48,6 +64,9 @@ export const createListing = async (req, res, next) => {
       listing
     });
   } catch (error) {
+    if (req.file) {
+      cleanupFile(req.file.path);
+    }
     next(error);
   }
 };
