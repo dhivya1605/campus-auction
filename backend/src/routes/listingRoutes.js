@@ -23,7 +23,7 @@ router.use('/:id/bids', bidRoutes);
 router.post('/', authenticate, uploadListingImage, createListingValidator, createListing);
 router.get('/', getListingsQueryValidator, getListings);
 router.get('/:id', getListingById);
-router.patch('/:id', authenticate, updateListingValidator, updateListing);
+router.patch('/:id', authenticate, uploadListingImage, updateListingValidator, updateListing);
 router.delete('/:id', authenticate, cancelListing);
 
 export default router;

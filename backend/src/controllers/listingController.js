@@ -271,7 +271,12 @@ export const updateListing = async (req, res, next) => {
     if (category !== undefined) listing.category = category;
     if (description !== undefined) listing.description = description;
     if (condition !== undefined) listing.condition = condition;
-    if (photos !== undefined) listing.photos = photos;
+    if (photos !== undefined) listing.photos = photos; // preserve existing if not updated
+    // Handle new uploaded image
+    if (req.file) {
+      // Replace existing photos with the new one
+      listing.photos = [`/uploads/${req.file.filename}`];
+    }
 
     if (!hasBids) {
       if (startingPrice !== undefined) {

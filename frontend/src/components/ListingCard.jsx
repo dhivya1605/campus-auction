@@ -1,5 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
+import { getImageUrl, PLACEHOLDER_IMAGE } from '../utils/imageUrl';
 import CountdownTimer from './CountdownTimer';
 
 export const ListingCard = ({ listing }) => {
@@ -17,8 +18,8 @@ export const ListingCard = ({ listing }) => {
     seller
   } = listing;
 
-  const defaultPhoto = 'https://images.unsplash.com/photo-1526170375885-4d8ecf77b99f?auto=format&fit=crop&w=600&q=80';
-  const displayPhoto = photos && photos.length > 0 && photos[0] ? photos[0] : defaultPhoto;
+  const defaultPhoto = PLACEHOLDER_IMAGE;
+  const displayPhoto = getImageUrl(photos?.[0]);
 
   const isLeading = Boolean(leadingBid);
 
@@ -31,7 +32,7 @@ export const ListingCard = ({ listing }) => {
           className="card-img"
           onError={(e) => {
             e.target.onerror = null;
-            e.target.src = defaultPhoto;
+            e.target.src = PLACEHOLDER_IMAGE;
           }}
         />
         <div className="card-badges">

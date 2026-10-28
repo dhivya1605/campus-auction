@@ -97,13 +97,19 @@ export const updateListingValidator = [
     .withMessage(`Condition must be one of: ${LISTING_CONDITIONS.join(', ')}`),
   body('photos')
     .optional()
-    .isArray({ min: 1 })
-    .withMessage('Photos must be an array with at least one photo'),
-  body('photos.*')
-    .optional()
-    .trim()
-    .notEmpty()
-    .withMessage('Photo URL or reference cannot be empty'),
+    .customSanitizer((val) => {
+      if (!val) return [];
+      if (Array.isArray(val)) return val;
+      if (typeof val === 'string') {
+        try {
+          const parsed = JSON.parse(val);
+          return Array.isArray(parsed) ? parsed : [val];
+        } catch {
+          return [val];
+        }
+      }
+      return [];
+    }),
   body('startingPrice')
     .optional()
     .isInt({ min: 0 })

@@ -7,7 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import CountdownTimer from '../components/CountdownTimer';
 import BidHistory from '../components/BidHistory';
 import Loading from '../components/Loading';
-import ErrorMessage from '../components/ErrorMessage';
+import { getImageUrl, PLACEHOLDER_IMAGE } from '../utils/imageUrl';
 
 export const ListingDetails = () => {
   const { id } = useParams();

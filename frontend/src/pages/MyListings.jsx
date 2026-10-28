@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
+import { getImageUrl, PLACEHOLDER_IMAGE } from '../utils/imageUrl';
 import { listingApi } from '../api/listingApi';
-import { saleApi } from '../api/saleApi';
 import { useAuth } from '../context/AuthContext';
 import Loading from '../components/Loading';
 import ErrorMessage from '../components/ErrorMessage';
