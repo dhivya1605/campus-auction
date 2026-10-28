@@ -7,6 +7,7 @@ import { useAuth } from '../context/AuthContext';
 import { useNotifications } from '../context/NotificationContext';
 import CountdownTimer from '../components/CountdownTimer';
 import BidHistory from '../components/BidHistory';
+import QuestionsAndAnswers from '../components/QuestionsAndAnswers';
 import Loading from '../components/Loading';
 import ErrorMessage from '../components/ErrorMessage';
 import { getImageUrl, PLACEHOLDER_IMAGE } from '../utils/imageUrl';
@@ -486,6 +487,13 @@ export const ListingDetails = () => {
           </div>
         </div>
       </div>
+
+      {/* Questions and Answers Before Bidding */}
+      <QuestionsAndAnswers
+        listingId={id}
+        isSeller={isSeller}
+        isBiddingOpen={isBiddingOpen}
+      />
     </div>
   );
 };

@@ -263,3 +263,48 @@ export const notifyListingCancelled = async ({ bidderIds, listingId, listingTitl
   }
 };
 
+/**
+ * Notify the seller that a question was asked on their listing.
+ */
+export const notifyQuestionAsked = async ({
+  sellerId,
+  listingId,
+  listingTitle,
+  questionId,
+  questionText,
+  askerName
+}) => {
+  const preview = questionText.length > 80 ? `${questionText.slice(0, 77)}...` : questionText;
+  const fromName = askerName || 'A student';
+  await createNotification({
+    recipient: sellerId,
+    eventType: NOTIFICATION_EVENTS.QUESTION_ASKED,
+    title: '💬 New Question on Your Listing',
+    message: `${fromName} asked on "${listingTitle}": "${preview}"`,
+    listing: listingId,
+    idempotencyKey: `QUESTION_ASKED:${sellerId}:${questionId}`
+  });
+};
+
+/**
+ * Notify the student who asked a question that the seller has answered it.
+ */
+export const notifyQuestionAnswered = async ({
+  askerId,
+  listingId,
+  listingTitle,
+  questionId,
+  answerText
+}) => {
+  const preview = answerText.length > 80 ? `${answerText.slice(0, 77)}...` : answerText;
+  await createNotification({
+    recipient: askerId,
+    eventType: NOTIFICATION_EVENTS.QUESTION_ANSWERED,
+    title: '💬 Question Answered by Seller',
+    message: `The seller answered your question on "${listingTitle}": "${preview}"`,
+    listing: listingId,
+    idempotencyKey: `QUESTION_ANSWERED:${askerId}:${questionId}`
+  });
+};
+
+

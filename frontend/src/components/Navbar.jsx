@@ -40,6 +40,9 @@ const getEventIcon = (eventType) => {
     case 'SALE_CANCELLED':
     case 'LISTING_CANCELLED':
       return '🚫';
+    case 'QUESTION_ASKED':
+    case 'QUESTION_ANSWERED':
+      return '💬';
     default:
       return '🔔';
   }

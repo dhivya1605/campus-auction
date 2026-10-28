@@ -7,6 +7,7 @@ import {
   cancelListing
 } from '../controllers/listingController.js';
 import bidRoutes from './bidRoutes.js';
+import questionRoutes from './questionRoutes.js';
 import { authenticate } from '../middleware/authMiddleware.js';
 import { uploadListingImage } from '../middleware/uploadMiddleware.js';
 import {
@@ -19,6 +20,9 @@ const router = Router();
 
 // Nested route for bids: /api/listings/:id/bids
 router.use('/:id/bids', bidRoutes);
+
+// Nested route for questions: /api/listings/:id/questions
+router.use('/:id/questions', questionRoutes);
 
 router.post('/', authenticate, uploadListingImage, createListingValidator, createListing);
 router.get('/', getListingsQueryValidator, getListings);

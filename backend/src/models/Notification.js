@@ -16,7 +16,9 @@ export const NOTIFICATION_EVENTS = {
   HANDOVER_COMPLETED: 'HANDOVER_COMPLETED', // Both confirmed — sale complete
   FAILED_PICKUP: 'FAILED_PICKUP',       // Handover failed
   SALE_CANCELLED: 'SALE_CANCELLED',     // Seller cancelled sale
-  LISTING_CANCELLED: 'LISTING_CANCELLED' // Seller cancelled the active listing
+  LISTING_CANCELLED: 'LISTING_CANCELLED', // Seller cancelled the active listing
+  QUESTION_ASKED: 'QUESTION_ASKED',     // Buyer asked a question about a listing
+  QUESTION_ANSWERED: 'QUESTION_ANSWERED' // Seller answered the question
 };
 
 const notificationSchema = new mongoose.Schema(
