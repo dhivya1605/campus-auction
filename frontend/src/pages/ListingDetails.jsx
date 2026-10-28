@@ -75,7 +75,7 @@ export const ListingDetails = () => {
     fetchListing(false);
   }, [fetchListing]);
 
-  // Background live update for active auctions (every 20s, keeping existing view intact).
+  // Background live update for active auctions (every 6s, keeping existing view intact).
   // Must be here — before any early returns — to satisfy React's Rules of Hooks.
   useEffect(() => {
     // Guard inside the effect: only run the interval when we actually have a live auction.
@@ -84,7 +84,7 @@ export const ListingDetails = () => {
 
     const interval = setInterval(() => {
       fetchListing(false);
-    }, 20000);
+    }, 6000);
 
     return () => clearInterval(interval);
   }, [listing, fetchListing]);
@@ -107,6 +107,20 @@ export const ListingDetails = () => {
         ? `Bid of ₹${amountNum} placed! ⏱️ Anti-sniping protection triggered: closing time extended by 60 seconds!`
         : `Bid of ₹${amountNum} placed successfully!`;
       setBidSuccess(successMsg);
+
+      // Instantly update the countdown deadline and price locally
+      if (response.closingTime) {
+        setListing((prev) =>
+          prev
+            ? {
+                ...prev,
+                closingTime: response.closingTime,
+                currentPrice: response.currentPrice || amountNum
+              }
+            : prev
+        );
+      }
+
       // Smoothly update listing data and bids without resetting page loading state
       await fetchListing(false);
       fetchNotifications();
