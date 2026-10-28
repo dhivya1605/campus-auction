@@ -1,0 +1,164 @@
+{
+  "client": "Thunder Client",
+  "collectionName": "Campus Auction Marketplace API",
+  "dateExported": "2026-10-28",
+  "version": "1.1",
+  "folders": [],
+  "requests": [
+    {
+      "name": "1. Health Check",
+      "method": "GET",
+      "url": "http://localhost:5000/api/health"
+    },
+    {
+      "name": "2. Register Seller",
+      "method": "POST",
+      "url": "http://localhost:5000/api/auth/register",
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"name\": \"Alice Seller\",\n  \"email\": \"alice@campus.edu\",\n  \"password\": \"alicePass123\"\n}"
+      }
+    },
+    {
+      "name": "3. Register Bidder",
+      "method": "POST",
+      "url": "http://localhost:5000/api/auth/register",
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"name\": \"Bob Bidder\",\n  \"email\": \"bob@campus.edu\",\n  \"password\": \"bobPass123\"\n}"
+      }
+    },
+    {
+      "name": "4. Login Seller",
+      "method": "POST",
+      "url": "http://localhost:5000/api/auth/login",
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"email\": \"alice@campus.edu\",\n  \"password\": \"alicePass123\"\n}"
+      }
+    },
+    {
+      "name": "5. Get Profile (Me)",
+      "method": "GET",
+      "url": "http://localhost:5000/api/auth/me",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{SELLER_TOKEN}}"
+        }
+      ]
+    },
+    {
+      "name": "6. Create Auction Listing",
+      "method": "POST",
+      "url": "http://localhost:5000/api/listings",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{SELLER_TOKEN}}"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"title\": \"Hercules Roadeo Mountain Cycle\",\n  \"category\": \"cycle\",\n  \"description\": \"Single handedly used for 2 semesters. Front disk brake, 21 gears in smooth condition.\",\n  \"condition\": \"good\",\n  \"photos\": [\"https://images.unsplash.com/photo-1485965120184-e220f721d03e\"],\n  \"startingPrice\": 2500,\n  \"minimumBidIncrement\": 100,\n  \"closingTime\": \"2026-10-30T18:00:00.000Z\"\n}"
+      }
+    },
+    {
+      "name": "7. Browse Listings with Filters",
+      "method": "GET",
+      "url": "http://localhost:5000/api/listings?category=cycle&sort=newest&page=1&limit=10"
+    },
+    {
+      "name": "8. Get Listing Details & Bids",
+      "method": "GET",
+      "url": "http://localhost:5000/api/listings/{{LISTING_ID}}"
+    },
+    {
+      "name": "9. Place Valid Bid",
+      "method": "POST",
+      "url": "http://localhost:5000/api/listings/{{LISTING_ID}}/bids",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{BIDDER_TOKEN}}"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"amount\": 2500\n}"
+      }
+    },
+    {
+      "name": "10. View Public Bids",
+      "method": "GET",
+      "url": "http://localhost:5000/api/listings/{{LISTING_ID}}/bids"
+    },
+    {
+      "name": "11. Close Auction (Admin or Expired)",
+      "method": "POST",
+      "url": "http://localhost:5000/api/auctions/{{LISTING_ID}}/close",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{SELLER_TOKEN}}"
+        }
+      ]
+    },
+    {
+      "name": "12. View Sale Outcome",
+      "method": "GET",
+      "url": "http://localhost:5000/api/sales/{{LISTING_ID}}",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{SELLER_TOKEN}}"
+        }
+      ]
+    },
+    {
+      "name": "13. Seller Approves Winning Bid",
+      "method": "POST",
+      "url": "http://localhost:5000/api/sales/{{LISTING_ID}}/approve",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{SELLER_TOKEN}}"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"note\": \"Price accepted. Ready for pickup.\"\n}"
+      }
+    },
+    {
+      "name": "14. Seller Confirms Handover",
+      "method": "POST",
+      "url": "http://localhost:5000/api/sales/{{LISTING_ID}}/confirm-handover",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{SELLER_TOKEN}}"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"location\": \"Campus Main Gate\",\n  \"notes\": \"Cycle handed over with lock key\"\n}"
+      }
+    },
+    {
+      "name": "15. Buyer Confirms Handover (Completes Sale)",
+      "method": "POST",
+      "url": "http://localhost:5000/api/sales/{{LISTING_ID}}/confirm-handover",
+      "headers": [
+        {
+          "name": "Authorization",
+          "value": "Bearer {{BIDDER_TOKEN}}"
+        }
+      ],
+      "body": {
+        "type": "json",
+        "raw": "{\n  \"location\": \"Campus Main Gate\",\n  \"notes\": \"Received cycle in working condition\"\n}"
+      }
+    }
+  ]
+}
