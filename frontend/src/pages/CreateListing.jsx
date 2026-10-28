@@ -1,12 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { listingApi } from '../api/listingApi';
 
 const CATEGORIES = ['cycle', 'calculator', 'books', 'electronics', 'other'];
 const CONDITIONS = ['new', 'like-new', 'good', 'fair', 'poor'];
+const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5 MB
+const ALLOWED_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
 export const CreateListing = () => {
   const navigate = useNavigate();
+  const fileInputRef = useRef(null);
 
   // Default closing time: 48 hours from now in local ISO format for input
   const defaultClosingDate = new Date(Date.now() + 48 * 60 * 60 * 1000);
@@ -21,49 +24,90 @@ export const CreateListing = () => {
     category: 'cycle',
     condition: 'good',
     description: '',
-    photoUrl: 'https://images.unsplash.com/photo-1485965120184-e220f721d03e',
-    additionalPhotos: '',
     startingPrice: '1000',
     minimumBidIncrement: '50',
     closingTime: formattedDefaultClosing
   });
 
+  const [selectedFile, setSelectedFile] = useState(null);
+  const [previewUrl, setPreviewUrl] = useState(null);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState(null);
+
+  // Cleanup blob URL when component unmounts or preview changes
+  useEffect(() => {
+    return () => {
+      if (previewUrl && previewUrl.startsWith('blob:')) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData((prev) => ({ ...prev, [name]: value }));
   };
 
+  const handleFileChange = (e) => {
+    setError(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate type
+    if (!ALLOWED_TYPES.includes(file.type.toLowerCase())) {
+      setError('Invalid file format. Please select a JPEG, PNG, or WebP image.');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    // Validate size
+    if (file.size > MAX_FILE_SIZE) {
+      setError(`Image is too large (${(file.size / 1024 / 1024).toFixed(1)} MB). Maximum allowed size is 5 MB.`);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    if (previewUrl && previewUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(previewUrl);
+    }
+
+    setSelectedFile(file);
+    setPreviewUrl(URL.createObjectURL(file));
+  };
+
+  const handleRemoveImage = () => {
+    if (previewUrl && previewUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(previewUrl);
+    }
+    setSelectedFile(null);
+    setPreviewUrl(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError(null);
 
-    // Validate photo URLs
-    const photos = [formData.photoUrl.trim()];
-    if (formData.additionalPhotos.trim()) {
-      formData.additionalPhotos
-        .split('\n')
-        .map((p) => p.trim())
-        .filter(Boolean)
-        .forEach((url) => photos.push(url));
-    }
-
-    const payload = {
-      title: formData.title.trim(),
-      category: formData.category,
-      condition: formData.condition,
-      description: formData.description.trim(),
-      photos,
-      startingPrice: parseInt(formData.startingPrice, 10),
-      minimumBidIncrement: parseInt(formData.minimumBidIncrement, 10),
-      closingTime: new Date(formData.closingTime).toISOString()
-    };
-
-    if (new Date(payload.closingTime) <= new Date()) {
+    const closingDate = new Date(formData.closingTime);
+    if (closingDate <= new Date()) {
       setError('Closing time must be in the future.');
       return;
+    }
+
+    // Prepare multipart form data
+    const payload = new FormData();
+    payload.append('title', formData.title.trim());
+    payload.append('category', formData.category);
+    payload.append('condition', formData.condition);
+    payload.append('description', formData.description.trim());
+    payload.append('startingPrice', String(parseInt(formData.startingPrice, 10)));
+    payload.append('minimumBidIncrement', String(parseInt(formData.minimumBidIncrement, 10)));
+    payload.append('closingTime', closingDate.toISOString());
+
+    if (selectedFile) {
+      payload.append('image', selectedFile);
     }
 
     try {
@@ -162,43 +206,109 @@ export const CreateListing = () => {
               required
               minLength={10}
               maxLength={3000}
-              placeholder="Describe age, functionality, accessories included, and condition..."
+              placeholder="Describe item condition, age, usage, and any accessories included..."
               className="form-control"
               value={formData.description}
               onChange={handleChange}
             />
           </div>
 
+          {/* Local Image Upload Control */}
           <div className="form-group">
-            <label className="form-label" htmlFor="photoUrl">
-              Primary Photo URL *
+            <label className="form-label">
+              Product Image
             </label>
-            <input
-              id="photoUrl"
-              type="url"
-              name="photoUrl"
-              required
-              placeholder="https://images.unsplash.com/photo-..."
-              className="form-control"
-              value={formData.photoUrl}
-              onChange={handleChange}
-            />
-            <div className="form-help">Enter a public image URL or paste an Unsplash photo link.</div>
-          </div>
 
-          <div className="form-group">
-            <label className="form-label" htmlFor="additionalPhotos">
-              Additional Photo URLs (Optional, one per line)
-            </label>
-            <textarea
-              id="additionalPhotos"
-              name="additionalPhotos"
-              placeholder="https://...&#10;https://..."
-              className="form-control"
-              style={{ minHeight: '60px' }}
-              value={formData.additionalPhotos}
-              onChange={handleChange}
+            <input
+              ref={fileInputRef}
+              type="file"
+              id="imageUpload"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={handleFileChange}
+              style={{ display: 'none' }}
             />
+
+            {!previewUrl ? (
+              <div
+                style={{
+                  border: '2px dashed var(--border)',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '2rem 1rem',
+                  textAlign: 'center',
+                  backgroundColor: '#fafafa',
+                  cursor: 'pointer'
+                }}
+                onClick={() => fileInputRef.current?.click()}
+              >
+                <div style={{ fontSize: '2rem', marginBottom: '0.5rem' }}>📷</div>
+                <p style={{ fontWeight: 600, color: 'var(--text-main)', marginBottom: '0.25rem' }}>
+                  Select product photo from your device
+                </p>
+                <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '1rem' }}>
+                  Supports JPEG, PNG, or WebP (up to 5 MB)
+                </p>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    fileInputRef.current?.click();
+                  }}
+                >
+                  Choose Image
+                </button>
+              </div>
+            ) : (
+              <div
+                style={{
+                  border: '1px solid var(--border)',
+                  borderRadius: 'var(--radius-sm)',
+                  padding: '1rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '1rem',
+                  backgroundColor: '#fafafa'
+                }}
+              >
+                <img
+                  src={previewUrl}
+                  alt="Preview"
+                  style={{
+                    width: '90px',
+                    height: '90px',
+                    objectFit: 'cover',
+                    borderRadius: 'var(--radius-sm)',
+                    border: '1px solid var(--border)'
+                  }}
+                />
+                <div style={{ flexGrow: 1 }}>
+                  <div style={{ fontWeight: 600, fontSize: '0.9rem', color: 'var(--text-main)' }}>
+                    {selectedFile?.name}
+                  </div>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.2rem' }}>
+                    {(selectedFile?.size / 1024).toFixed(0)} KB • Ready to upload
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem', marginTop: '0.5rem' }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary"
+                      style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem' }}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      Choose Different Image
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-danger"
+                      style={{ padding: '0.25rem 0.6rem', fontSize: '0.75rem' }}
+                      onClick={handleRemoveImage}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
@@ -270,4 +380,3 @@ export const CreateListing = () => {
 };
 
 export default CreateListing;
-

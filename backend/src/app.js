@@ -7,6 +7,7 @@ import auctionRoutes from './routes/auctionRoutes.js';
 import saleRoutes from './routes/saleRoutes.js';
 import { notFoundMiddleware } from './middleware/notFoundMiddleware.js';
 import { errorMiddleware } from './middleware/errorMiddleware.js';
+import { UPLOADS_DIR } from './middleware/uploadMiddleware.js';
 
 export const createApp = () => {
   const app = express();
@@ -20,6 +21,9 @@ export const createApp = () => {
   );
   app.use(express.json({ limit: '10mb' }));
   app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+  // Serve uploaded images statically
+  app.use('/uploads', express.static(UPLOADS_DIR));
 
   // Health check endpoint
   app.get('/api/health', (req, res) => {
